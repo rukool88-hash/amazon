@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -56,6 +56,7 @@ model User {
   updatedAt      DateTime   @updatedAt
   accounts       Account[]
   sessions       Session[]
+  resetTokens    PasswordResetToken[]
   adminAuditLogs AdminAuditLog[]
 }
 
@@ -183,7 +184,7 @@ model CreditLedger {
 
 model CreditPlan {
   id           String   @id @default(cuid())
-  name         String
+  name         String   @unique
   credits      Int
   priceCents   Int
   description  String?
@@ -201,6 +202,18 @@ model ManualOrder {
   note        String?
   createdAt   DateTime @default(now())
   account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  userId     String
+  token      String    @unique
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model PromptTemplate {

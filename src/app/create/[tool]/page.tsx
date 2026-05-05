@@ -1,14 +1,7 @@
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/shell/app-shell";
+import { CreateJobForm } from "@/components/create/create-job-form";
 import { toolMap, type ToolKey } from "@/lib/tools";
-
-const commonFields = [
-  "商品标题 / 项目名称",
-  "目标平台",
-  "卖点或创意说明",
-  "输出尺寸与比例",
-  "负面约束词",
-];
 
 export default async function CreateToolPage({
   params,
@@ -50,31 +43,7 @@ export default async function CreateToolPage({
               预计 {definition.points} 积分
             </div>
           </div>
-          <div className="mt-6 grid gap-4 md:grid-cols-2">
-            {commonFields.map((field) => (
-              <label key={field} className="text-sm font-medium text-[var(--foreground)]">
-                <span className="mb-2 block">{field}</span>
-                <input
-                  className="w-full rounded-2xl border border-[var(--line)] bg-white/85 px-4 py-3 outline-none"
-                  placeholder={`请输入${field}`}
-                />
-              </label>
-            ))}
-            <label className="md:col-span-2 text-sm font-medium text-[var(--foreground)]">
-              <span className="mb-2 block">上传素材</span>
-              <div className="rounded-[26px] border border-dashed border-[var(--line)] bg-white/55 p-8 text-center text-sm text-[var(--muted)]">
-                这里将接入 Blob 上传和素材归属校验
-              </div>
-            </label>
-          </div>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button className="rounded-full bg-[var(--accent)] px-5 py-3 text-sm font-semibold text-white">
-              创建任务
-            </button>
-            <button className="rounded-full border border-[var(--line)] bg-white/70 px-5 py-3 text-sm font-semibold">
-              保存模板草稿
-            </button>
-          </div>
+          <CreateJobForm tool={definition.key} points={definition.points} />
         </div>
       </section>
     </AppShell>

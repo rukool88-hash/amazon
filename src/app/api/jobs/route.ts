@@ -1,10 +1,32 @@
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { mockJobs } from "@/lib/api-mocks";
+import { creditsByType, jobTypeLabel, jobTypeMap } from "@/lib/domain";
+import { ensureDefaultWorkspace } from "@/lib/bootstrap";
+import { createAndExecuteJob } from "@/lib/jobs";
+import { db } from "@/lib/db";
 import { jobCreateSchema } from "@/lib/job-contracts";
 
 export async function GET() {
-  return NextResponse.json({ data: mockJobs, nextCursor: null });
+  const { account } = await ensureDefaultWorkspace();
+
+  const jobs = await db.generationJob.findMany({
+    where: { accountId: account.id },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+  });
+
+  return NextResponse.json({
+    data: jobs.map((job) => ({
+      id: job.id,
+      title: String((job.inputPayload as { promptInputs?: { title?: string } })?.promptInputs?.title || "未命名任务"),
+      status: job.status,
+      tool: jobTypeLabel[job.jobType],
+      jobType: job.jobType,
+      reservedCredits: Number((job.billingSnapshot as { cost?: number })?.cost || 0),
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+    })),
+    nextCursor: null,
+  });
 }
 
 export async function POST(request: Request) {
@@ -21,28 +43,51 @@ export async function POST(request: Request) {
     );
   }
 
-  const costMap = {
-    "product-image": 10,
-    "model-swap": 8,
-    "detail-page": 15,
-    "scene-replace": 12,
-  } as const;
+  const { account, project } = await ensureDefaultWorkspace();
+  const cost = creditsByType[parsed.data.jobType];
+  const mappedType = jobTypeMap[parsed.data.jobType];
 
-  const jobId = randomUUID();
+  if (!cost || !mappedType) {
+    return NextResponse.json({ error: "UNSUPPORTED_JOB_TYPE" }, { status: 400 });
+  }
 
-  return NextResponse.json(
-    {
-      data: {
-        jobId,
-        status: "pending",
-        reservedCredits: costMap[parsed.data.jobType],
-        pollingHint: {
-          initialDelayMs: 500,
-          maxDelayMs: 5000,
+  try {
+    const job = await createAndExecuteJob({
+      accountId: account.id,
+      projectId: parsed.data.projectId || project.id,
+      jobType: mappedType,
+      cost,
+      inputPayload: {
+        toolConfig: parsed.data.toolConfig,
+        sourceAssets: parsed.data.sourceAssetIds,
+        promptInputs: parsed.data.promptInputs,
+        outputOptions: {
+          autoSaveAsset: true,
         },
       },
-      message: "任务创建骨架已就绪，下一步接入数据库与队列。",
-    },
-    { status: 201 },
-  );
+    });
+
+    return NextResponse.json(
+      {
+        data: {
+          jobId: job.id,
+          status: job.status,
+          reservedCredits: cost,
+          pollingHint: {
+            initialDelayMs: 500,
+            maxDelayMs: 5000,
+          },
+        },
+      },
+      { status: 201 },
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "创建任务失败";
+
+    if (message === "INSUFFICIENT_CREDITS") {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

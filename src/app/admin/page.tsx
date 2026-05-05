@@ -1,14 +1,28 @@
 import { AppShell } from "@/components/shell/app-shell";
-import { recentJobs } from "@/lib/dashboard-data";
+import { ensureDefaultWorkspace } from "@/lib/bootstrap";
+import { jobStatusLabel, jobTypeLabel } from "@/lib/domain";
+import { db } from "@/lib/db";
 
-const operators = [
-  { label: "失败任务", value: "12" },
-  { label: "待审核模板", value: "4" },
-  { label: "手工积分调整", value: "9" },
-  { label: "今日回调异常", value: "1" },
-];
+export const dynamic = "force-dynamic";
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const { account } = await ensureDefaultWorkspace();
+  const jobs = await db.generationJob.findMany({
+    where: { accountId: account.id },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+  });
+
+  const failedCount = jobs.filter((job) => job.status === "FAILED").length;
+  const processingCount = jobs.filter((job) => ["QUEUED", "PROCESSING"].includes(job.status)).length;
+
+  const operators = [
+    { label: "失败任务", value: String(failedCount) },
+    { label: "处理中任务", value: String(processingCount) },
+    { label: "总任务数", value: String(jobs.length) },
+    { label: "今日完成", value: String(jobs.filter((job) => job.status === "COMPLETED").length) },
+  ];
+
   return (
     <AppShell title="管理后台">
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -23,7 +37,7 @@ export default function AdminPage() {
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-2xl font-semibold">任务监控</h2>
-            <p className="mt-2 text-sm text-[var(--muted)]">下一步会把数据库任务和 Trigger.dev 状态映射到这里。</p>
+            <p className="mt-2 text-sm text-[var(--muted)]">当前表格已映射真实数据库任务状态，可用于运营监控。</p>
           </div>
           <button className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white">重试失败任务</button>
         </div>
@@ -38,12 +52,12 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {recentJobs.map((job) => (
+              {jobs.map((job) => (
                 <tr key={job.id} className="border-t border-[var(--line)]">
-                  <td className="px-4 py-3">{job.title}</td>
-                  <td className="px-4 py-3">{job.tool}</td>
-                  <td className="px-4 py-3">{job.status}</td>
-                  <td className="px-4 py-3">{job.updatedAt}</td>
+                  <td className="px-4 py-3">{String((job.inputPayload as { promptInputs?: { title?: string } })?.promptInputs?.title || "未命名任务")}</td>
+                  <td className="px-4 py-3">{jobTypeLabel[job.jobType]}</td>
+                  <td className="px-4 py-3">{jobStatusLabel[job.status]}</td>
+                  <td className="px-4 py-3">{job.updatedAt.toLocaleString("zh-CN")}</td>
                 </tr>
               ))}
             </tbody>
